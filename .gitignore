@@ -18,3 +18,5 @@ CLAUDE.md
 # IDE
 .vscode/
 .idea/
+
+config.h
