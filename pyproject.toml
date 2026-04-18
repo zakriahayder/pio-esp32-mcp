@@ -10,4 +10,5 @@ dependencies = [
     "mcp>=1.0.0",
     "pyserial>=3.5",
     "requests>=2.31.0",
+    "ruff",
 ]
