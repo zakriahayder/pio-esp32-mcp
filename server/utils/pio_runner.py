@@ -1,7 +1,7 @@
 import subprocess
+from server.schemas import PioRunnerOutput
 
-
-def run_pio(args: list[str], cwd: str | None = None) -> dict:
+def run_pio(args: list[str], cwd: str | None = None) -> PioRunnerOutput:
     """Runs a pio CLI command
 
     Args:
