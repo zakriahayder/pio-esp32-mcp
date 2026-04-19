@@ -2,7 +2,13 @@
 #include <WiFi.h>
 #include <WebServer.h>
 #include <ArduinoJson.h>
-#include "config.h"
+
+#ifndef WIFI_SSID
+#error "WIFI_SSID is not defined. Set it via build_flags in platformio.ini."
+#endif
+#ifndef WIFI_PASSWORD
+#error "WIFI_PASSWORD is not defined. Set it via build_flags in platformio.ini."
+#endif
 
 WebServer server(80);
 

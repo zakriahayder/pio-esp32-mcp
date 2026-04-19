@@ -1,6 +1,8 @@
+import configparser
 import json
 import os
 import time
+from pathlib import Path
 
 import serial
 from mcp.server.fastmcp import FastMCP
@@ -167,3 +169,75 @@ def register_pio_tools(mcp: FastMCP) -> None:
             ser.close()
 
         return {"success": True, "response": "\n".join(lines), "error": None}
+
+    @mcp.tool()
+    def flash_base_firmware(port: str) -> dict:
+        """Flash the base firmware from this MCP repo to the ESP32.
+
+        Call this before esp_connect whenever the ESP32 may not be running the
+        base firmware. It injects WiFi credentials from the server's environment,
+        compiles, and uploads. After success, call pio_monitor_serial to get the
+        IP address, then esp_connect. Returns an error if WIFI_SSID or
+        WIFI_PASSWORD are not set in the environment.
+        """
+        ssid = os.environ.get("WIFI_SSID", "")
+        password = os.environ.get("WIFI_PASSWORD", "")
+
+        if not ssid:
+            return {
+                "success": False,
+                "error": (
+                    "WIFI_SSID is not set. Add it to the env block in .mcp.json "
+                    "and restart the MCP server."
+                ),
+            }
+
+        firmware_dir = Path(__file__).parents[2] / "firmware"
+        ini_path = firmware_dir / "platformio.ini"
+
+        config = configparser.ConfigParser()
+        config.read(ini_path)
+
+        section = "env:esp32dev"
+        if not config.has_section(section):
+            config.add_section(section)
+
+        build_flags = f"-DWIFI_SSID='\"{ssid}\"' -DWIFI_PASSWORD='\"{password}\"'"
+        config.set(section, "build_flags", build_flags)
+
+        with open(ini_path, "w") as f:
+            config.write(f)
+
+        build = run_pio(["run"], cwd=str(firmware_dir))
+        if build["returncode"] != 0:
+            return {
+                "success": False,
+                "error": "Build failed",
+                "stdout": build["stdout"],
+                "stderr": build["stderr"],
+            }
+
+        upload = run_pio(
+            ["run", "-t", "upload", "--upload-port", port],
+            cwd=str(firmware_dir),
+        )
+        return {
+            "success": upload["returncode"] == 0,
+            "stdout": upload["stdout"],
+            "stderr": upload["stderr"],
+        }
+
+    @mcp.tool()
+    def get_wifi_credentials() -> dict:
+        """Return the WiFi SSID and password stored in the server's environment.
+
+        Call this before writing any firmware that connects to WiFi so you never
+        need to ask the user for credentials. Returns empty strings if not configured —
+        in that case ask the user and suggest they add WIFI_SSID / WIFI_PASSWORD
+        to the MCP server env block in .mcp.json.
+        """
+        return {
+            "ssid": os.environ.get("WIFI_SSID", ""),
+            "password": os.environ.get("WIFI_PASSWORD", ""),
+            "configured": bool(os.environ.get("WIFI_SSID")),
+        }

@@ -18,7 +18,11 @@ mcp = FastMCP(
         "First call pio_list_devices to find the serial port, then call pio_monitor_serial on that port "
         "at 115200 baud for a few seconds to read boot or status logs and extract the IP address. "
         "If no IP address appears, build and upload the firmware with pio_build and pio_upload, then monitor serial again. "
-        "Use esp_connect only after an IP address has been discovered from serial output."
+        "When the user wants to connect to or control an ESP32 over WiFi, always call "
+        "flash_base_firmware first with the detected serial port to ensure the correct "
+        "firmware is running, then call pio_monitor_serial to get the IP address, then "
+        "esp_connect. Never ask the user for WiFi credentials — call get_wifi_credentials "
+        "instead. Use esp_connect only after an IP address has been discovered from serial output."
     ),
     log_level="ERROR",
 )
