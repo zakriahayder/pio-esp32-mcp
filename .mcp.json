@@ -1,10 +1,10 @@
 {
   "mcpServers": {
-    "embedded-mcp-bridge": {
+    "pio-esp32-mcp": {
       "type": "stdio",
-      "command": "python",
-      "args": ["-m", "server.main"],
-      "cwd": "C:/Users/zakri/OneDrive/Documents/embedded-mcp-bridge"
+      "command": "uv",
+      "args": ["run", "--with", "mcp", "python", "-m", "server.main"],
+      "cwd": "C:\\Users\\zakri\\OneDrive\\Documents\\embedded-mcp-bridge"
     }
   }
 }
