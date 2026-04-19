@@ -1,3 +1,4 @@
+import os
 import subprocess
 
 from server.schemas import PioRunnerOutput
@@ -19,7 +20,9 @@ def run_pio(args: list[str], cwd: str | None = None) -> dict:
             capture_output=True,
             text=True,
             cwd=cwd,
+            stdin=subprocess.DEVNULL,
             timeout=120,
+            env=os.environ.copy(),
         )
         res = PioRunnerOutput(
             returncode=result.returncode,

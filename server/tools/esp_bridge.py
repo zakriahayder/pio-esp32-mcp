@@ -1,3 +1,5 @@
+from typing import Any
+
 import requests
 from mcp.server.fastmcp import FastMCP
 
@@ -19,6 +21,7 @@ def _connect(ip: str, port: int = 80) -> dict:
     except requests.RequestException as e:
         return {"success": False, "error": str(e)}
 
+
 def _call(tool_name: str, args: dict) -> dict:
     global _connection
     if _connection is None:
@@ -37,6 +40,7 @@ def _call(tool_name: str, args: dict) -> dict:
     except requests.RequestException as e:
         return {"success": False, "error": str(e)}
 
+
 def _disconnect() -> dict:
     global _connection
     _connection = None
@@ -47,15 +51,30 @@ def register_esp_tools(mcp: FastMCP) -> None:
 
     @mcp.tool()
     def esp_connect(ip: str, port: int = 80) -> dict:
-        """Connect to ESP32 server at given IP."""
+        """Connect to the ESP32's HTTP tool server.
+
+        Use this only after the board's IP address has been discovered, usually by
+        calling pio_list_devices and then pio_monitor_serial to inspect serial logs.
+        This tool queries the ESP32 for its available remote tools and stores the
+        connection for later esp_call requests.
+        """
         return _connect(ip, port)
 
     @mcp.tool()
-    def esp_call(tool_name: str, args: dict = {}) -> dict:
-        """Call a tool on the connected ESP32."""
-        return _call(tool_name, args)
+    def esp_call(tool_name: str, args: dict[str, Any] | None = None) -> dict:
+        """Call a tool exposed by the connected ESP32 over HTTP.
+
+        Use this after esp_connect succeeds. The tool_name should normally come from
+        the available_tools returned by esp_connect. This is the final step after
+        serial discovery and network connection have already been completed.
+        """
+        return _call(tool_name, args or {})
 
     @mcp.tool()
     def esp_disconnect() -> dict:
-        """Close the connection."""
+        """Forget the currently connected ESP32 session.
+
+        Use this when the assistant should explicitly close out the current target
+        device before connecting to another ESP32 or ending the workflow.
+        """
         return _disconnect()
