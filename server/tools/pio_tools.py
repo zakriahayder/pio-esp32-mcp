@@ -21,7 +21,7 @@ def _get_wifi_credentials() -> dict:
     }
 
 
-def _flash_base_firmware(port: str) -> dict:
+def _flash_base_firmware(port: str, firmware_dir: Path | None = None) -> dict:
     ssid = os.environ.get("WIFI_SSID", "")
     password = os.environ.get("WIFI_PASSWORD", "")
 
@@ -34,7 +34,9 @@ def _flash_base_firmware(port: str) -> dict:
             ),
         }
 
-    firmware_dir = Path(__file__).parents[2] / "firmware"
+    if firmware_dir is None:
+        firmware_dir = Path(__file__).parents[2] / "firmware"
+
     ini_path = firmware_dir / "platformio.ini"
 
     config = configparser.ConfigParser()
