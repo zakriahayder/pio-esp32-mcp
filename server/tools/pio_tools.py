@@ -38,11 +38,39 @@ def _flash_base_firmware(port: str) -> dict:
     ini_path = firmware_dir / "platformio.ini"
 
     config = configparser.ConfigParser()
+
+    if not ini_path.exists():
+        return {
+            "success": False,
+            "error": (
+                f"platformio.ini not found at {ini_path}. "
+                "The base firmware PlatformIO project is missing or not initialized."
+            ),
+        }
+
     config.read(ini_path)
 
     section = "env:esp32dev"
     if not config.has_section(section):
-        config.add_section(section)
+        return {
+            "success": False,
+            "error": (
+                f"Missing [{section}] in {ini_path}. "
+                "The base firmware PlatformIO project is not initialized correctly."
+            ),
+        }
+
+    required_keys = ["platform", "board", "framework"]
+    missing_keys = [key for key in required_keys if not config.has_option(section, key)]
+
+    if missing_keys:
+        return {
+            "success": False,
+            "error": (
+                f"Missing required PlatformIO config values in [{section}]: "
+                f"{', '.join(missing_keys)}."
+            ),
+        }
 
     build_flags = f"-DWIFI_SSID='\"{ssid}\"' -DWIFI_PASSWORD='\"{password}\"'"
     config.set(section, "build_flags", build_flags)
@@ -103,7 +131,7 @@ def register_pio_tools(mcp: FastMCP) -> None:
     ) -> dict:
         """Build firmware in a PlatformIO project directory.
 
-        Use this when firmware needs to be compiled before uploading to the ESP32.
+        Use this when firmware needs to be compiled before uploading to the board.
         If the next goal is to discover the board's IP address, build first, then
         upload, then monitor serial output.
         """
@@ -122,10 +150,10 @@ def register_pio_tools(mcp: FastMCP) -> None:
         project_path,
         port=None,
     ):
-        """Upload compiled firmware to a connected ESP32 over serial.
+        """Upload compiled firmware to a connected board over serial.
 
         Use this after pio_build when the board needs new firmware. If  you need
-        the ESP32 IP address, upload first when needed and then use
+        the board's IP address, upload first when needed and then use
         pio_monitor_serial to read boot logs and discover it.
         """
         args = ["run", "-t", "upload"]
@@ -141,9 +169,9 @@ def register_pio_tools(mcp: FastMCP) -> None:
 
     @mcp.tool()
     def pio_list_devices() -> dict:
-        """List connected serial devices and candidate ESP32 ports.
+        """List connected serial devices and candidate board ports.
 
-        Use this first when the you needs to identify which ESP32 is connected.
+        Use this first when the you needs to identify which board is connected.
         The returned port should usually be passed into pio_monitor_serial or
         pio_upload. This is the first step for discovering the board's IP address.
         """
@@ -165,7 +193,7 @@ def register_pio_tools(mcp: FastMCP) -> None:
         """Read serial output from a connected device for a short time window.
 
         Use this immediately after pio_list_devices to inspect boot logs, Wi-Fi
-        status, and especially the ESP32 IP address. When an IP address is needed
+        status, and especially the board's IP address. When an IP address is needed
         for esp_connect, prefer this tool over asking the user.
         """
         try:
@@ -213,16 +241,23 @@ def register_pio_tools(mcp: FastMCP) -> None:
         try:
             ser.reset_input_buffer()
             ser.write((command + "\n").encode("utf-8"))
+
             lines: list[str] = []
             read_until = time.monotonic() + (timeout if wait_for else 2)
+
             while time.monotonic() < read_until:
                 line = ser.readline().decode("utf-8", errors="replace").rstrip()
-                if line:
-                    lines.append(line)
-                    if wait_for and wait_for in line:
+
+                if not line:
+                    if wait_for is None:
                         break
-                elif not wait_for:
+                    continue
+
+                lines.append(line)
+
+                if wait_for and wait_for in line:
                     break
+
         finally:
             ser.close()
 
@@ -238,14 +273,89 @@ def register_pio_tools(mcp: FastMCP) -> None:
         IP address, then esp_connect. Returns an error if WIFI_SSID or
         WIFI_PASSWORD are not set in the environment.
         """
-        return _flash_base_firmware(port)
+        ssid = os.environ.get("WIFI_SSID", "")
+        password = os.environ.get("WIFI_PASSWORD", "")
+
+        if not ssid:
+            return {
+                "success": False,
+                "error": (
+                    "WIFI_SSID is not set. Add it to the env block in .mcp.json "
+                    "and restart the MCP server."
+                ),
+            }
+
+        firmware_dir = Path(__file__).parents[2] / "firmware"
+        ini_path = firmware_dir / "platformio.ini"
+
+        config = configparser.ConfigParser()
+
+        if not ini_path.exists():
+            return {
+                "success": False,
+                "error": (
+                    f"platformio.ini not found at {ini_path}. "
+                    "The base firmware PlatformIO project is missing or not initialized."
+                ),
+            }
+
+        config.read(ini_path)
+
+        section = "env:esp32dev"
+        if not config.has_section(section):
+            return {
+                "success": False,
+                "error": (
+                    f"Missing [{section}] in {ini_path}. "
+                    "The base firmware PlatformIO project is not initialized correctly."
+                ),
+            }
+
+        required_keys = ["platform", "board", "framework"]
+        missing_keys = [
+            key for key in required_keys if not config.has_option(section, key)
+        ]
+
+        if missing_keys:
+            return {
+                "success": False,
+                "error": (
+                    f"Missing required PlatformIO config values in [{section}]: "
+                    f"{', '.join(missing_keys)}."
+                ),
+            }
+
+        build_flags = f"-DWIFI_SSID='\"{ssid}\"' -DWIFI_PASSWORD='\"{password}\"'"
+        config.set(section, "build_flags", build_flags)
+
+        with open(ini_path, "w") as f:
+            config.write(f)
+
+        build = run_pio(["run"], cwd=str(firmware_dir))
+        if build["returncode"] != 0:
+            return {
+                "success": False,
+                "error": "Build failed",
+                "stdout": build["stdout"],
+                "stderr": build["stderr"],
+            }
+
+        upload = run_pio(
+            ["run", "-t", "upload", "--upload-port", port],
+            cwd=str(firmware_dir),
+        )
+        return {
+            "success": upload["returncode"] == 0,
+            "stdout": upload["stdout"],
+            "stderr": upload["stderr"],
+        }
 
     @mcp.tool()
     def get_wifi_credentials() -> dict:
         """Return the WiFi SSID and password stored in the server's environment.
 
         Call this before writing any firmware that connects to WiFi so you never
-        need to ask the user for credentials. Returns empty strings if not configured —
+        need to ask the user for credentials. Returns empty strings if not configured,
         in that case ask the user and suggest they add WIFI_SSID / WIFI_PASSWORD
         to the MCP server env block in .mcp.json.
         """
