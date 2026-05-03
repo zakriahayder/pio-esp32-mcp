@@ -12,6 +12,64 @@ from server.utils.error_parser import parse_errors
 from server.utils.pio_runner import run_pio
 
 
+def _get_wifi_credentials() -> dict:
+    ssid = os.environ.get("WIFI_SSID", "")
+    return {
+        "ssid": ssid,
+        "password": os.environ.get("WIFI_PASSWORD", ""),
+        "configured": bool(ssid),
+    }
+
+
+def _flash_base_firmware(port: str) -> dict:
+    ssid = os.environ.get("WIFI_SSID", "")
+    password = os.environ.get("WIFI_PASSWORD", "")
+
+    if not ssid:
+        return {
+            "success": False,
+            "error": (
+                "WIFI_SSID is not set. Add it to the env block in .mcp.json "
+                "and restart the MCP server."
+            ),
+        }
+
+    firmware_dir = Path(__file__).parents[2] / "firmware"
+    ini_path = firmware_dir / "platformio.ini"
+
+    config = configparser.ConfigParser()
+    config.read(ini_path)
+
+    section = "env:esp32dev"
+    if not config.has_section(section):
+        config.add_section(section)
+
+    build_flags = f"-DWIFI_SSID='\"{ssid}\"' -DWIFI_PASSWORD='\"{password}\"'"
+    config.set(section, "build_flags", build_flags)
+
+    with open(ini_path, "w") as f:
+        config.write(f)
+
+    build = run_pio(["run"], cwd=str(firmware_dir))
+    if build["returncode"] != 0:
+        return {
+            "success": False,
+            "error": "Build failed",
+            "stdout": build["stdout"],
+            "stderr": build["stderr"],
+        }
+
+    upload = run_pio(
+        ["run", "-t", "upload", "--upload-port", port],
+        cwd=str(firmware_dir),
+    )
+    return {
+        "success": upload["returncode"] == 0,
+        "stdout": upload["stdout"],
+        "stderr": upload["stderr"],
+    }
+
+
 def register_pio_tools(mcp: FastMCP) -> None:
 
     @mcp.tool()
@@ -180,52 +238,7 @@ def register_pio_tools(mcp: FastMCP) -> None:
         IP address, then esp_connect. Returns an error if WIFI_SSID or
         WIFI_PASSWORD are not set in the environment.
         """
-        ssid = os.environ.get("WIFI_SSID", "")
-        password = os.environ.get("WIFI_PASSWORD", "")
-
-        if not ssid:
-            return {
-                "success": False,
-                "error": (
-                    "WIFI_SSID is not set. Add it to the env block in .mcp.json "
-                    "and restart the MCP server."
-                ),
-            }
-
-        firmware_dir = Path(__file__).parents[2] / "firmware"
-        ini_path = firmware_dir / "platformio.ini"
-
-        config = configparser.ConfigParser()
-        config.read(ini_path)
-
-        section = "env:esp32dev"
-        if not config.has_section(section):
-            config.add_section(section)
-
-        build_flags = f"-DWIFI_SSID='\"{ssid}\"' -DWIFI_PASSWORD='\"{password}\"'"
-        config.set(section, "build_flags", build_flags)
-
-        with open(ini_path, "w") as f:
-            config.write(f)
-
-        build = run_pio(["run"], cwd=str(firmware_dir))
-        if build["returncode"] != 0:
-            return {
-                "success": False,
-                "error": "Build failed",
-                "stdout": build["stdout"],
-                "stderr": build["stderr"],
-            }
-
-        upload = run_pio(
-            ["run", "-t", "upload", "--upload-port", port],
-            cwd=str(firmware_dir),
-        )
-        return {
-            "success": upload["returncode"] == 0,
-            "stdout": upload["stdout"],
-            "stderr": upload["stderr"],
-        }
+        return _flash_base_firmware(port)
 
     @mcp.tool()
     def get_wifi_credentials() -> dict:
@@ -236,8 +249,4 @@ def register_pio_tools(mcp: FastMCP) -> None:
         in that case ask the user and suggest they add WIFI_SSID / WIFI_PASSWORD
         to the MCP server env block in .mcp.json.
         """
-        return {
-            "ssid": os.environ.get("WIFI_SSID", ""),
-            "password": os.environ.get("WIFI_PASSWORD", ""),
-            "configured": bool(os.environ.get("WIFI_SSID")),
-        }
+        return _get_wifi_credentials()

@@ -12,7 +12,8 @@
 
 WebServer server(80);
 
-void handleGetTools() {
+void handleGetTools()
+{
     JsonDocument doc;
 
     JsonArray tools = doc["tools"].to<JsonArray>();
@@ -38,32 +39,37 @@ void handleGetTools() {
     server.send(200, "application/json", out);
 }
 
-void handleCall() {
-    if (!server.hasArg("plain")) {
+void handleCall()
+{
+    if (!server.hasArg("plain"))
+    {
         server.send(400, "application/json", "{\"error\": \"No body\"}");
         return;
     }
-    
+
     String body = server.arg("plain");
     JsonDocument req;
     DeserializationError err = deserializeJson(req, body);
-    
-    if (err) {
+
+    if (err)
+    {
         server.send(400, "application/json", "{\"error\": \"Invalid JSON\"}");
         return;
     }
-    
-    const char* tool = req["tool"];
+
+    const char *tool = req["tool"];
     int pin = req["args"]["pin"] | -1;
-    
-    if (pin < 0) {
+
+    if (pin < 0)
+    {
         server.send(400, "application/json", "{\"error\": \"Missing pin argument\"}");
         return;
     }
-    
+
     JsonDocument res;
-    
-    if (strcmp(tool, "gpio_write") == 0) {
+
+    if (strcmp(tool, "gpio_write") == 0)
+    {
         int value = req["args"]["value"] | 0;
         pinMode(pin, OUTPUT);
         digitalWrite(pin, value ? HIGH : LOW);
@@ -71,21 +77,24 @@ void handleCall() {
         res["pin"] = pin;
         res["value"] = value;
     }
-    else if (strcmp(tool, "gpio_read") == 0) {
+    else if (strcmp(tool, "gpio_read") == 0)
+    {
         pinMode(pin, INPUT);
         int value = digitalRead(pin);
         res["success"] = true;
         res["pin"] = pin;
         res["value"] = value;
     }
-    else if (strcmp(tool, "adc_read") == 0) {
+    else if (strcmp(tool, "adc_read") == 0)
+    {
         int raw = analogRead(pin);
         res["success"] = true;
         res["pin"] = pin;
         res["raw"] = raw;
         res["voltage"] = (raw * 3.3) / 4095.0;
     }
-    else if (strcmp(tool, "pwm_write") == 0) {
+    else if (strcmp(tool, "pwm_write") == 0)
+    {
         int duty = req["args"]["duty"] | 0;
         pinMode(pin, OUTPUT);
         analogWrite(pin, duty);
@@ -93,7 +102,8 @@ void handleCall() {
         res["pin"] = pin;
         res["duty"] = duty;
     }
-    else {
+    else
+    {
         res["success"] = false;
         res["error"] = "Unknown tool";
         String out;
@@ -101,31 +111,34 @@ void handleCall() {
         server.send(404, "application/json", out);
         return;
     }
-    
+
     String out;
     serializeJson(res, out);
     server.send(200, "application/json", out);
 }
 
-void setup() {
+void setup()
+{
     Serial.begin(115200);
-    
+
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
     Serial.print("Connecting to WiFi");
-    while (WiFi.status() != WL_CONNECTED) {
+    while (WiFi.status() != WL_CONNECTED)
+    {
         delay(500);
         Serial.print(".");
     }
     Serial.println();
     Serial.print("IP: ");
     Serial.println(WiFi.localIP());
-    
+
     server.on("/tools", HTTP_GET, handleGetTools);
     server.on("/call", HTTP_POST, handleCall);
     server.begin();
     Serial.println("Tool server ready");
 }
 
-void loop() {
+void loop()
+{
     server.handleClient();
 }

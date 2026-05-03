@@ -43,7 +43,3 @@ def run_pio(args: list[str], cwd: str | None = None) -> dict:
             stderr=(exc.stderr or "") + "\nPlatformIO command timed out after 120 seconds.",
         ).model_dump()
 
-
-if __name__ == "__main__":
-    # Example usage
-    print(run_pio(["--version"]))
